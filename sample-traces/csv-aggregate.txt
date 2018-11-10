@@ -1,0 +1,58 @@
+Sets:
+Set#0, type: RecordType(INTEGER EMPNO, VARCHAR NAME, INTEGER DEPTNO, VARCHAR GENDER, VARCHAR CITY, INTEGER EMPID, INTEGER AGE, BOOLEAN SLACKER, BOOLEAN MANAGER, DATE JOINEDAT)
+	rel#28:Subset#0.NONE.[], best=null, importance=0.531441
+		rel#0:LogicalTableScan.NONE.[](table=[SALES, EMPS]), rowcount=100.0, cumulative cost={inf}
+	rel#76:Subset#0.BINDABLE.[], best=rel#75, importance=0.531441
+		rel#75:BindableTableScan.BINDABLE.[](table=[SALES, EMPS]), rowcount=100.0, cumulative cost={1.0 rows, 1.01 cpu, 0.0 io}
+	rel#80:Subset#0.ENUMERABLE.[], best=rel#98, importance=0.5904900000000001
+		rel#98:EnumerableInterpreter.ENUMERABLE.[](input=rel#76:Subset#0.BINDABLE.[]), rowcount=100.0, cumulative cost={51.0 rows, 51.01 cpu, 0.0 io}
+Set#1, type: RecordType(INTEGER EMPNO, VARCHAR NAME, VARCHAR GENDER)
+	rel#30:Subset#1.NONE.[], best=null, importance=0.5904900000000001
+		rel#29:LogicalProject.NONE.[](input=rel#28:Subset#0.NONE.[],EMPNO=$0,NAME=$1,GENDER=$3), rowcount=100.0, cumulative cost={inf}
+	rel#82:Subset#1.ENUMERABLE.[], best=rel#81, importance=0.5904900000000001
+		rel#81:EnumerableProject.ENUMERABLE.[](input=rel#80:Subset#0.ENUMERABLE.[],EMPNO=$0,NAME=$1,GENDER=$3), rowcount=100.0, cumulative cost={151.0 rows, 351.01 cpu, 0.0 io}
+Set#2, type: RecordType(INTEGER EMPNO, VARCHAR NAME, VARCHAR GENDER)
+	rel#32:Subset#2.NONE.[], best=null, importance=0.6561
+		rel#31:LogicalFilter.NONE.[](input=rel#30:Subset#1.NONE.[],condition=AND(=($2, 'F'), >($0, 125))), rowcount=7.5, cumulative cost={inf}
+		rel#57:LogicalProject.NONE.[](input=rel#56:Subset#6.NONE.[],EMPNO=$0,NAME=$1,GENDER=$3), rowcount=7.5, cumulative cost={inf}
+	rel#65:Subset#2.ENUMERABLE.[], best=rel#64, importance=0.6561
+		rel#64:EnumerableProject.ENUMERABLE.[](input=rel#63:Subset#6.ENUMERABLE.[],EMPNO=$0,NAME=$1,GENDER=$3), rowcount=100.0, cumulative cost={150.5 rows, 350.505 cpu, 0.0 io}
+		rel#83:EnumerableFilter.ENUMERABLE.[](input=rel#82:Subset#1.ENUMERABLE.[],condition=AND(=($2, 'F'), >($0, 125))), rowcount=7.5, cumulative cost={158.5 rows, 451.01 cpu, 0.0 io}
+Set#3, type: RecordType(VARCHAR NAME, INTEGER EMPNO)
+	rel#34:Subset#3.NONE.[], best=null, importance=0.7290000000000001
+		rel#33:LogicalProject.NONE.[](input=rel#32:Subset#2.NONE.[],NAME=$1,EMPNO=$0), rowcount=7.5, cumulative cost={inf}
+		rel#58:LogicalProject.NONE.[](input=rel#56:Subset#6.NONE.[],NAME=$1,EMPNO=$0), rowcount=7.5, cumulative cost={inf}
+		rel#91:LogicalProject.NONE.[](input=rel#63:Subset#6.ENUMERABLE.[],NAME=$1,EMPNO=$0), rowcount=100.0, cumulative cost={inf}
+	rel#78:Subset#3.ENUMERABLE.[], best=rel#77, importance=0.6561
+		rel#77:EnumerableProject.ENUMERABLE.[](input=rel#63:Subset#6.ENUMERABLE.[],NAME=$1,EMPNO=$0), rowcount=100.0, cumulative cost={150.5 rows, 250.505 cpu, 0.0 io}
+		rel#79:EnumerableProject.ENUMERABLE.[](input=rel#65:Subset#2.ENUMERABLE.[],NAME=$1,EMPNO=$0), rowcount=100.0, cumulative cost={158.0 rows, 273.005 cpu, 0.0 io}
+Set#4, type: RecordType(VARCHAR NAME, BIGINT CNT)
+	rel#36:Subset#4.NONE.[], best=null, importance=0.81
+		rel#35:LogicalAggregate.NONE.[](input=rel#34:Subset#3.NONE.[],group={0},CNT=COUNT($1)), rowcount=1.0, cumulative cost={inf}
+		rel#37:LogicalSort.NONE.[0 DESC](input=rel#36:Subset#4.NONE.[],sort0=$0,dir0=DESC), rowcount=1.0, cumulative cost={inf}
+		rel#51:LogicalSort.NONE.[0 DESC](input=rel#46:Subset#4.ENUMERABLE.[],sort0=$0,dir0=DESC), rowcount=10.0, cumulative cost={inf}
+		rel#53:LogicalAggregate.NONE.[](input=rel#32:Subset#2.NONE.[],group={1},CNT=COUNT($0)), rowcount=1.0, cumulative cost={inf}
+		rel#62:LogicalAggregate.NONE.[](input=rel#56:Subset#6.NONE.[],group={1},CNT=COUNT($0)), rowcount=1.0, cumulative cost={inf}
+		rel#92:LogicalAggregate.NONE.[](input=rel#63:Subset#6.ENUMERABLE.[],group={1},CNT=COUNT($0)), rowcount=10.0, cumulative cost={inf}
+	rel#46:Subset#4.ENUMERABLE.[], best=rel#85, importance=0.7290000000000001
+		rel#45:AbstractConverter.ENUMERABLE.[0 DESC](input=rel#49:Subset#4.NONE.[0 DESC],convention=ENUMERABLE,sort=[0 DESC]), rowcount=1.0, cumulative cost={inf}
+		rel#47:EnumerableSort.ENUMERABLE.[0 DESC](input=rel#46:Subset#4.ENUMERABLE.[],sort0=$0,dir0=DESC), rowcount=10.0, cumulative cost={61.625 rows, 234.71180743952368 cpu, 0.0 io}
+		rel#50:AbstractConverter.ENUMERABLE.[0 DESC](input=rel#46:Subset#4.ENUMERABLE.[],convention=ENUMERABLE,sort=[0 DESC]), rowcount=10.0, cumulative cost={inf}
+		rel#85:EnumerableAggregate.ENUMERABLE.[](input=rel#63:Subset#6.ENUMERABLE.[],group={1},CNT=COUNT($0)), rowcount=10.0, cumulative cost={61.75 rows, 50.505 cpu, 0.0 io}
+		rel#86:EnumerableAggregate.ENUMERABLE.[](input=rel#65:Subset#2.ENUMERABLE.[],group={1},CNT=COUNT($0)), rowcount=10.0, cumulative cost={69.25 rows, 73.005 cpu, 0.0 io}
+		rel#87:EnumerableAggregate.ENUMERABLE.[](input=rel#78:Subset#3.ENUMERABLE.[],group={0},CNT=COUNT($1)), rowcount=10.0, cumulative cost={69.25 rows, 65.505 cpu, 0.0 io}
+	rel#48:Subset#4.ENUMERABLE.[0 DESC], best=rel#47, importance=1.0
+		rel#45:AbstractConverter.ENUMERABLE.[0 DESC](input=rel#49:Subset#4.NONE.[0 DESC],convention=ENUMERABLE,sort=[0 DESC]), rowcount=1.0, cumulative cost={inf}
+		rel#47:EnumerableSort.ENUMERABLE.[0 DESC](input=rel#46:Subset#4.ENUMERABLE.[],sort0=$0,dir0=DESC), rowcount=10.0, cumulative cost={61.625 rows, 234.71180743952368 cpu, 0.0 io}
+		rel#50:AbstractConverter.ENUMERABLE.[0 DESC](input=rel#46:Subset#4.ENUMERABLE.[],convention=ENUMERABLE,sort=[0 DESC]), rowcount=10.0, cumulative cost={inf}
+	rel#49:Subset#4.NONE.[0 DESC], best=null, importance=0.9
+		rel#37:LogicalSort.NONE.[0 DESC](input=rel#36:Subset#4.NONE.[],sort0=$0,dir0=DESC), rowcount=1.0, cumulative cost={inf}
+		rel#51:LogicalSort.NONE.[0 DESC](input=rel#46:Subset#4.ENUMERABLE.[],sort0=$0,dir0=DESC), rowcount=10.0, cumulative cost={inf}
+Set#6, type: RecordType(INTEGER EMPNO, VARCHAR NAME, INTEGER DEPTNO, VARCHAR GENDER, VARCHAR CITY, INTEGER EMPID, INTEGER AGE, BOOLEAN SLACKER, BOOLEAN MANAGER, DATE JOINEDAT)
+	rel#56:Subset#6.NONE.[], best=null, importance=0.5904900000000001
+		rel#54:LogicalFilter.NONE.[](input=rel#28:Subset#0.NONE.[],condition=AND(=($3, 'F'), >($0, 125))), rowcount=7.5, cumulative cost={inf}
+	rel#63:Subset#6.ENUMERABLE.[], best=rel#99, importance=0.6561
+		rel#84:EnumerableFilter.ENUMERABLE.[](input=rel#80:Subset#0.ENUMERABLE.[],condition=AND(=($3, 'F'), >($0, 125))), rowcount=7.5, cumulative cost={58.5 rows, 151.01 cpu, 0.0 io}
+		rel#99:EnumerableInterpreter.ENUMERABLE.[](input=rel#73:Subset#6.BINDABLE.[]), rowcount=100.0, cumulative cost={50.5 rows, 50.505 cpu, 0.0 io}
+	rel#73:Subset#6.BINDABLE.[], best=rel#72, importance=0.5904900000000001
+		rel#72:BindableTableScan.BINDABLE.[](table=[SALES, EMPS],filters=[AND(=($3, 'F'), >($0, 125))]), rowcount=100.0, cumulative cost={0.5 rows, 0.505 cpu, 0.0 io}

@@ -1,0 +1,490 @@
+<!doctype html>
+<html>
+<head>
+  <title>Apache Calcite trace analyzer</title>
+  <script type='text/javascript' src='https://cdnjs.cloudflare.com/ajax/libs/jquery/3.3.1/jquery.slim.min.js'></script>
+  <script type='text/javascript' src='https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.js'></script>
+  <link href='https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.css' rel='stylesheet' type='text/css' />
+
+  <style type='text/css'>
+    #body {
+      font-family: serif;
+    }
+
+    #net {
+      position: absolute;
+      width: 1024px;
+      height: 768px;
+      top: 0;
+      left: 0;
+    }
+
+    #wait {
+      position: absolute;
+      top: 400px;
+      z-index: 1000;
+      font-size: 500%;
+      width: 100%;
+      text-align: center;
+      color: #555555;
+      display: none;
+    }
+
+    .btn {
+      padding: 4px;
+      background-color: #eb742a;
+      cursor: pointer;
+      color: black;
+      text-align: center;
+    }
+
+    #menu {
+      font-size: 140%;
+      width: 64px;
+      height: 24px;
+      text-align: center;
+    }
+
+    #controls {
+      position: absolute;
+      left: 0px;
+      top: 0px;
+      height: 24px;
+      z-index: 100000;
+    }
+
+    #menu-body {
+      position: absolute;
+      left: 0px;
+      top: 32px;
+      height: 800px;
+      width: 600px;
+      color: #eeeeee;
+      background-color: #555555;
+      padding: 4px;
+      display: none;
+      z-index: 100001;
+      -webkit-box-shadow: 10px 10px 15px -2px rgba(82,82,82,1);
+      -moz-box-shadow: 10px 10px 15px -2px rgba(82,82,82,1);
+      box-shadow: 10px 10px 15px -2px rgba(82,82,82,1);
+    }
+
+    #draw {
+      font-size: 140%;
+      display: block;
+      float: right;
+      width: 120px;
+    }
+
+    #menu-body label {
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    #trace {
+      margin-top: 5px;
+      margin-left: 3px;
+      display: block;
+      width: 583px;
+      height: 655px;
+      overflow-x: auto;
+    }
+
+    #details {
+      position: absolute;
+      left: 77px;
+      top:3px;
+      background-color:white;
+    }
+
+    #forkme {
+      position: absolute; 
+      top: 0; 
+      right: 0; 
+      border: 0; 
+      z-index: 200000;
+    }
+  </style>
+
+  <script type='text/javascript'>
+    $(document).ready(function () {
+
+      var getTraceLines = function() {
+        return $('#trace').val().split('\n');
+      }
+
+
+      var draw = function () {
+        $('#wait').show();
+
+        var colorSet = 'orange';
+        var colorRoot = '#ea9393';
+        var colorTable = '#cb93ea';
+        var colorRelNode = '#93ea94';
+        var colorRelNodeInfCost = '#aaaaaa';
+        var colorSubset = '#93d1ea';
+        var colorSubsetInfCost = '#aaaaaa';
+
+        var colorEdge = 'black';
+        var colorEdgeBest = 'red';
+        var colorEdgeSet = 'orange';
+
+        var lines = getTraceLines();
+
+        var nodes = [];      
+        var edges = [];
+        var details = {};
+
+        var setIdShift = 1000000000;
+
+        var setId = -1;
+        var subsetRelId = -1;
+        var bestInSubset = -1;
+
+        var skipConventionPattern = $('#skip-conventions-regexp').val().trim();
+        
+        var skipConventions = /$a/; //never matches
+
+        if (skipConventionPattern) {
+          try {
+            skipConventions = new RegExp(skipConventionPattern);
+          } catch (e) {
+            alert(e);
+            skipConventions = /$a/;
+          }
+        }
+
+        var isSkipSubset = false;     
+        var isShowInfCostNodes = !!$('#is-include-inf-cost').is(':checked');
+        var isShowSets = !!$('#is-include-sets').is(':checked');
+        var isShowRelsAsEdges = !!$('#is-show-rels-as-edges').is(':checked');   
+        
+        var subsetNodes = {};
+        var referencedSubsetNodes = {};
+        var displayedRelNodes = {};
+
+        var drawSet = function(setId) {
+          if (isShowSets) {
+            nodes.push({
+              id: setId,
+              label: 'Set#' + (setId - setIdShift),
+              color: colorSet
+            })
+          }
+        }
+
+        var drawSubset = function(setId, subsetRelId, subsetConvention) {
+          result = line.match(/best=rel#(\d+)/);
+          if (result) {
+            bestInSubset = parseInt(result[1]);
+          } else {
+            bestInSubset = -1;
+          }
+          var isAnyBestInSubset = bestInSubset > -1;
+          if (isShowInfCostNodes || isAnyBestInSubset) {
+            var subsetNode = {
+              id: subsetRelId,
+              shape: 'box',
+              label: subsetConvention + '#' + subsetRelId,
+              color: isAnyBestInSubset ? colorSubset : colorSubsetInfCost
+            };
+            nodes.push(subsetNode);
+            subsetNodes[subsetRelId] = subsetNode;
+          }
+          if (isShowSets) {
+            edges.push({
+              from: setId,
+              to: subsetRelId,
+              arrows: 'from',
+              color: {
+                color: colorEdgeSet
+              }
+            });
+          }           
+        }
+
+        var drawRelNode = function(setId, subsetRelId, relId, line, result) {
+          var isBest = (bestInSubset == relId);
+          var tableMatch = line.match(/table=\[(.+)\]/);
+          var isTable = !!tableMatch;
+          var relName = result[2];
+          var isInfCost = !!line.match(/cost={inf}/);
+
+          var isShowNodeAsEdged = !isTable && isShowRelsAsEdges;
+
+          var inputsEdgeTo = isShowNodeAsEdged ? subsetRelId : relId;
+
+          var isAlreadyDisplayed = !!displayedRelNodes[relId];
+
+          var currentColorEdge = (isBest ? colorEdgeBest : colorEdge);
+
+          if (!(isTable || isShowInfCostNodes || !isInfCost)) {
+             return; 
+          }  
+
+          var label = (isTable ? tableMatch[1] : result[2]) + '#' + relId;
+
+          if (!isShowNodeAsEdged) {     
+
+            if (!isAlreadyDisplayed) {
+              nodes.push({
+                id: relId,
+                label: label,
+                color: isTable ? colorTable : (isInfCost ? colorRelNodeInfCost : colorRelNode)
+              })
+              displayedRelNodes[relId] = true;
+            }
+
+            edges.push({
+              from: relId,
+              to: subsetRelId,
+              arrows: 'to',
+              color: {
+                color: currentColorEdge
+              }
+            });
+          }          
+
+          var result = line.match(/left=rel#(\d+).+right=rel#(\d+)/);
+          if (result) {
+            var drawJoin = function(leftId, rightId) {
+              edges.push({
+                from: leftId,
+                to: inputsEdgeTo,
+                label:  'left:' + (isShowNodeAsEdged ? label :''),
+                arrows: 'to',
+                color: {
+                  color: currentColorEdge
+                }
+              });
+              edges.push({
+                from: rightId,
+                to: inputsEdgeTo,
+                label: 'right:' + (isShowNodeAsEdged ? label :''),
+                arrows: 'to',
+                color: {
+                  color: currentColorEdge
+                }
+              });
+            }
+            var leftId = parseInt(result[1]);
+            var rightId = parseInt(result[2]);
+
+            referencedSubsetNodes[leftId] = true; 
+            referencedSubsetNodes[rightId] = true; 
+
+            drawJoin(leftId, rightId);
+          } else {
+            result = line.match(/input=rel#(\d+)/);
+            if (result) {
+              var drawInput = function(inputId) {
+                edges.push({
+                  from: inputId,
+                  to: inputsEdgeTo,
+                  label: isShowNodeAsEdged ? label : null,
+                  arrows: 'to',
+                  color: {
+                    color: currentColorEdge
+                  }
+                });
+              }
+              var inputId = parseInt(result[1]);
+              referencedSubsetNodes[inputId] = true; 
+
+              drawInput(inputId);
+            } else if (!isTable) {
+                alert('Unexpected line:' + line);                
+            }
+          }  
+        }
+
+        for (var i = 0; i < lines.length; i++) {
+          var line = lines[i];
+
+          var result;
+
+          result = line.match(/^Set#(\d+)/);
+          if (result) {
+            setId = setIdShift + parseInt(result[1]);
+            details[setId] = line;
+            drawSet(setId);
+            continue;
+          }
+
+          result = line.match(/^\trel#(\d+):Subset#(\d+)\.([^,]+)/);
+          if (result) {   
+            var subsetConvention = result[3];         
+            if (subsetConvention.match(skipConventions)) {
+              isSkipSubset = true;
+             continue;
+            } else {
+              isSkipSubset = false;
+            }
+            subsetRelId = parseInt(result[1]);    
+            details[subsetRelId] = line;        
+            drawSubset(setId, subsetRelId, subsetConvention);            
+            continue;
+          }
+
+          if (isSkipSubset) {
+            continue;
+          }
+
+          result = line.match(/^\t\trel#(\d+):([^\.]+)/);
+          if (result) {
+            var relId = parseInt(result[1]);
+            details[relId] = line;
+            drawRelNode(setId, subsetRelId, relId, line, result);
+            continue;
+          }
+        }
+
+        //trying to determine the root subset node
+        for (var subsetRelId in subsetNodes){          
+          if (!referencedSubsetNodes.hasOwnProperty(subsetRelId)) {
+            subsetNodes[subsetRelId].color = colorRoot;
+          }
+        }
+
+        var container = document.getElementById('net');
+        var data = {
+          nodes: new vis.DataSet(nodes),
+          edges: new vis.DataSet(edges)
+        };
+        var options = {
+          interaction:{
+            selectable: true, 
+            selectConnectedEdges:false
+          }
+        };
+        var network = new vis.Network(container, data, options);
+
+        network.once('stabilizationIterationsDone', function() {
+            $('#wait').hide();
+        });
+
+        network.on("selectNode", function (params) {            
+            var relId = params.nodes[0];
+            $('#details').text(details[relId]);
+        });
+      }
+
+      var resize = function () {
+        var net = $('#net');
+        net.width($(window).width());
+        net.height($(window).height());
+      }
+      $(window).resize(resize);
+
+      $('#menu').click(function () {
+        $('#menu-body').toggle();
+      });
+      $('#clear').click(function () {
+        $('#trace').val('')
+      });
+      $('#draw').click(draw);
+      resize();
+      draw();
+    })
+  </script>
+</head>
+<body>
+  <a href="https://github.com/anha1/apache-calcite-trace-analyzer">
+    <img id="forkme" src="https://s3.amazonaws.com/github/ribbons/forkme_right_orange_ff7600.png" alt="Fork me on GitHub">
+  </a>
+
+  <div id='net'></div>
+
+  <div id='controls'>
+    <div id='menu' class='btn'>...</div>
+  </div>
+
+  <div id='wait'>Processing...</div>
+  <div id='details'></div>
+  <div id='menu-body'>
+
+    <div id='draw' class='btn'>Draw!</div>
+
+    <label>
+      <input type='checkbox' id='is-include-sets'/> Include sets
+    </label>
+    <label>
+      <input type='checkbox' id='is-include-inf-cost'/> Include nodes with infinite cost
+    </label>
+    <label>
+      <input type='checkbox' id='is-show-rels-as-edges'/> Show rels as edges
+    </label>
+
+    <label>Skip conventions regexp
+      <input id='skip-conventions-regexp' type='text' required="required" value='AAA|BBB|CCC'>
+    </label>
+
+    <label>
+      Apache Calcite trace
+      <span id='clear' class='btn'>Clear</span>
+    </label>
+
+
+<textarea id='trace'>
+Sets:
+Set#0, type: RecordType(INTEGER EMPNO, VARCHAR NAME, INTEGER DEPTNO, VARCHAR GENDER, VARCHAR CITY, INTEGER EMPID, INTEGER AGE, BOOLEAN SLACKER, BOOLEAN MANAGER, DATE JOINEDAT)
+	rel#28:Subset#0.NONE.[], best=null, importance=0.531441
+		rel#0:LogicalTableScan.NONE.[](table=[SALES, EMPS]), rowcount=100.0, cumulative cost={inf}
+	rel#76:Subset#0.BINDABLE.[], best=rel#75, importance=0.531441
+		rel#75:BindableTableScan.BINDABLE.[](table=[SALES, EMPS]), rowcount=100.0, cumulative cost={1.0 rows, 1.01 cpu, 0.0 io}
+	rel#80:Subset#0.ENUMERABLE.[], best=rel#98, importance=0.5904900000000001
+		rel#98:EnumerableInterpreter.ENUMERABLE.[](input=rel#76:Subset#0.BINDABLE.[]), rowcount=100.0, cumulative cost={51.0 rows, 51.01 cpu, 0.0 io}
+Set#1, type: RecordType(INTEGER EMPNO, VARCHAR NAME, VARCHAR GENDER)
+	rel#30:Subset#1.NONE.[], best=null, importance=0.5904900000000001
+		rel#29:LogicalProject.NONE.[](input=rel#28:Subset#0.NONE.[],EMPNO=$0,NAME=$1,GENDER=$3), rowcount=100.0, cumulative cost={inf}
+	rel#82:Subset#1.ENUMERABLE.[], best=rel#81, importance=0.5904900000000001
+		rel#81:EnumerableProject.ENUMERABLE.[](input=rel#80:Subset#0.ENUMERABLE.[],EMPNO=$0,NAME=$1,GENDER=$3), rowcount=100.0, cumulative cost={151.0 rows, 351.01 cpu, 0.0 io}
+Set#2, type: RecordType(INTEGER EMPNO, VARCHAR NAME, VARCHAR GENDER)
+	rel#32:Subset#2.NONE.[], best=null, importance=0.6561
+		rel#31:LogicalFilter.NONE.[](input=rel#30:Subset#1.NONE.[],condition=AND(=($2, 'F'), >($0, 125))), rowcount=7.5, cumulative cost={inf}
+		rel#57:LogicalProject.NONE.[](input=rel#56:Subset#6.NONE.[],EMPNO=$0,NAME=$1,GENDER=$3), rowcount=7.5, cumulative cost={inf}
+	rel#65:Subset#2.ENUMERABLE.[], best=rel#64, importance=0.6561
+		rel#64:EnumerableProject.ENUMERABLE.[](input=rel#63:Subset#6.ENUMERABLE.[],EMPNO=$0,NAME=$1,GENDER=$3), rowcount=100.0, cumulative cost={150.5 rows, 350.505 cpu, 0.0 io}
+		rel#83:EnumerableFilter.ENUMERABLE.[](input=rel#82:Subset#1.ENUMERABLE.[],condition=AND(=($2, 'F'), >($0, 125))), rowcount=7.5, cumulative cost={158.5 rows, 451.01 cpu, 0.0 io}
+Set#3, type: RecordType(VARCHAR NAME, INTEGER EMPNO)
+	rel#34:Subset#3.NONE.[], best=null, importance=0.7290000000000001
+		rel#33:LogicalProject.NONE.[](input=rel#32:Subset#2.NONE.[],NAME=$1,EMPNO=$0), rowcount=7.5, cumulative cost={inf}
+		rel#58:LogicalProject.NONE.[](input=rel#56:Subset#6.NONE.[],NAME=$1,EMPNO=$0), rowcount=7.5, cumulative cost={inf}
+		rel#91:LogicalProject.NONE.[](input=rel#63:Subset#6.ENUMERABLE.[],NAME=$1,EMPNO=$0), rowcount=100.0, cumulative cost={inf}
+	rel#78:Subset#3.ENUMERABLE.[], best=rel#77, importance=0.6561
+		rel#77:EnumerableProject.ENUMERABLE.[](input=rel#63:Subset#6.ENUMERABLE.[],NAME=$1,EMPNO=$0), rowcount=100.0, cumulative cost={150.5 rows, 250.505 cpu, 0.0 io}
+		rel#79:EnumerableProject.ENUMERABLE.[](input=rel#65:Subset#2.ENUMERABLE.[],NAME=$1,EMPNO=$0), rowcount=100.0, cumulative cost={158.0 rows, 273.005 cpu, 0.0 io}
+Set#4, type: RecordType(VARCHAR NAME, BIGINT CNT)
+	rel#36:Subset#4.NONE.[], best=null, importance=0.81
+		rel#35:LogicalAggregate.NONE.[](input=rel#34:Subset#3.NONE.[],group={0},CNT=COUNT($1)), rowcount=1.0, cumulative cost={inf}
+		rel#37:LogicalSort.NONE.[0 DESC](input=rel#36:Subset#4.NONE.[],sort0=$0,dir0=DESC), rowcount=1.0, cumulative cost={inf}
+		rel#51:LogicalSort.NONE.[0 DESC](input=rel#46:Subset#4.ENUMERABLE.[],sort0=$0,dir0=DESC), rowcount=10.0, cumulative cost={inf}
+		rel#53:LogicalAggregate.NONE.[](input=rel#32:Subset#2.NONE.[],group={1},CNT=COUNT($0)), rowcount=1.0, cumulative cost={inf}
+		rel#62:LogicalAggregate.NONE.[](input=rel#56:Subset#6.NONE.[],group={1},CNT=COUNT($0)), rowcount=1.0, cumulative cost={inf}
+		rel#92:LogicalAggregate.NONE.[](input=rel#63:Subset#6.ENUMERABLE.[],group={1},CNT=COUNT($0)), rowcount=10.0, cumulative cost={inf}
+	rel#46:Subset#4.ENUMERABLE.[], best=rel#85, importance=0.7290000000000001
+		rel#45:AbstractConverter.ENUMERABLE.[0 DESC](input=rel#49:Subset#4.NONE.[0 DESC],convention=ENUMERABLE,sort=[0 DESC]), rowcount=1.0, cumulative cost={inf}
+		rel#47:EnumerableSort.ENUMERABLE.[0 DESC](input=rel#46:Subset#4.ENUMERABLE.[],sort0=$0,dir0=DESC), rowcount=10.0, cumulative cost={61.625 rows, 234.71180743952368 cpu, 0.0 io}
+		rel#50:AbstractConverter.ENUMERABLE.[0 DESC](input=rel#46:Subset#4.ENUMERABLE.[],convention=ENUMERABLE,sort=[0 DESC]), rowcount=10.0, cumulative cost={inf}
+		rel#85:EnumerableAggregate.ENUMERABLE.[](input=rel#63:Subset#6.ENUMERABLE.[],group={1},CNT=COUNT($0)), rowcount=10.0, cumulative cost={61.75 rows, 50.505 cpu, 0.0 io}
+		rel#86:EnumerableAggregate.ENUMERABLE.[](input=rel#65:Subset#2.ENUMERABLE.[],group={1},CNT=COUNT($0)), rowcount=10.0, cumulative cost={69.25 rows, 73.005 cpu, 0.0 io}
+		rel#87:EnumerableAggregate.ENUMERABLE.[](input=rel#78:Subset#3.ENUMERABLE.[],group={0},CNT=COUNT($1)), rowcount=10.0, cumulative cost={69.25 rows, 65.505 cpu, 0.0 io}
+	rel#48:Subset#4.ENUMERABLE.[0 DESC], best=rel#47, importance=1.0
+		rel#45:AbstractConverter.ENUMERABLE.[0 DESC](input=rel#49:Subset#4.NONE.[0 DESC],convention=ENUMERABLE,sort=[0 DESC]), rowcount=1.0, cumulative cost={inf}
+		rel#47:EnumerableSort.ENUMERABLE.[0 DESC](input=rel#46:Subset#4.ENUMERABLE.[],sort0=$0,dir0=DESC), rowcount=10.0, cumulative cost={61.625 rows, 234.71180743952368 cpu, 0.0 io}
+		rel#50:AbstractConverter.ENUMERABLE.[0 DESC](input=rel#46:Subset#4.ENUMERABLE.[],convention=ENUMERABLE,sort=[0 DESC]), rowcount=10.0, cumulative cost={inf}
+	rel#49:Subset#4.NONE.[0 DESC], best=null, importance=0.9
+		rel#37:LogicalSort.NONE.[0 DESC](input=rel#36:Subset#4.NONE.[],sort0=$0,dir0=DESC), rowcount=1.0, cumulative cost={inf}
+		rel#51:LogicalSort.NONE.[0 DESC](input=rel#46:Subset#4.ENUMERABLE.[],sort0=$0,dir0=DESC), rowcount=10.0, cumulative cost={inf}
+Set#6, type: RecordType(INTEGER EMPNO, VARCHAR NAME, INTEGER DEPTNO, VARCHAR GENDER, VARCHAR CITY, INTEGER EMPID, INTEGER AGE, BOOLEAN SLACKER, BOOLEAN MANAGER, DATE JOINEDAT)
+	rel#56:Subset#6.NONE.[], best=null, importance=0.5904900000000001
+		rel#54:LogicalFilter.NONE.[](input=rel#28:Subset#0.NONE.[],condition=AND(=($3, 'F'), >($0, 125))), rowcount=7.5, cumulative cost={inf}
+	rel#63:Subset#6.ENUMERABLE.[], best=rel#99, importance=0.6561
+		rel#84:EnumerableFilter.ENUMERABLE.[](input=rel#80:Subset#0.ENUMERABLE.[],condition=AND(=($3, 'F'), >($0, 125))), rowcount=7.5, cumulative cost={58.5 rows, 151.01 cpu, 0.0 io}
+		rel#99:EnumerableInterpreter.ENUMERABLE.[](input=rel#73:Subset#6.BINDABLE.[]), rowcount=100.0, cumulative cost={50.5 rows, 50.505 cpu, 0.0 io}
+	rel#73:Subset#6.BINDABLE.[], best=rel#72, importance=0.5904900000000001
+		rel#72:BindableTableScan.BINDABLE.[](table=[SALES, EMPS],filters=[AND(=($3, 'F'), >($0, 125))]), rowcount=100.0, cumulative cost={0.5 rows, 0.505 cpu, 0.0 io}</textarea>
+</textarea>
+  </div>
+</body>
+</html>
