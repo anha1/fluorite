@@ -7,9 +7,15 @@
   <link href='https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.css' rel='stylesheet' type='text/css' />
 
   <style type='text/css'>
-    #body {
-      font-family: serif;
+    body {
+      font-family: sans-serif;
+      font-size: 18px;
+      color: #fff9ed;
     }
+     
+    input, textarea, checkbox {
+      background-color: #fff9ed;
+    } 
 
     #net {
       position: absolute;
@@ -32,16 +38,21 @@
 
     .btn {
       padding: 4px;
+      color: #ffffff;
       background-color: #eb742a;
       cursor: pointer;
-      color: black;
       text-align: center;
+      -webkit-user-select: none; /* webkit (safari, chrome) browsers */
+      -moz-user-select: none; /* mozilla browsers */
+      -khtml-user-select: none; /* webkit (konqueror) browsers */
+      -ms-user-select: none; /* IE10+ */
     }
 
     #menu {
-      font-size: 140%;
+      font-size: 240%;
       width: 64px;
-      height: 24px;
+      height: 34px;
+      line-height: 20px;
       text-align: center;
     }
 
@@ -56,10 +67,9 @@
     #menu-body {
       position: absolute;
       left: 0px;
-      top: 32px;
+      top: 42px;
       height: 800px;
       width: 600px;
-      color: #eeeeee;
       background-color: #555555;
       padding: 4px;
       display: none;
@@ -78,7 +88,7 @@
 
     #menu-body label {
       display: block;
-      margin-bottom: 6px;
+      margin-bottom: 8px;
     }
 
     #trace {
@@ -86,8 +96,8 @@
       margin-left: 3px;
       display: block;
       width: 583px;
-      height: 655px;
-      overflow-x: auto;
+      height: 645px;
+      overflow-x: auto;      
     }
 
     #details {
@@ -104,32 +114,47 @@
       border: 0; 
       z-index: 200000;
     }
+
+    #skip-conventions-regexp {
+      width: 300px;
+    }
+
+    #sample {
+      display: none;
+    }
   </style>
 
   <script type='text/javascript'>
+
+    var colorSet = 'orange';
+    var colorRoot = '#ea9393';
+    var colorTable = '#cb93ea';
+    var colorRelNode = '#93ea94';
+    var colorRelNodeInfCost = '#aaaaaa';
+    var colorSubset = '#93d1ea';
+    var colorSubsetInfCost = '#aaaaaa';
+
+    var colorEdge = 'black';
+    var colorEdgeBest = 'red';
+    var colorEdgeSet = 'orange';
+
+    var localStorageTraceKey = 'trace';
+
     $(document).ready(function () {
 
-      var getTraceLines = function() {
-        return $('#trace').val().split('\n');
-      }
-
-
       var draw = function () {
-        $('#wait').show();
+        var trace = $('#trace').val();
 
-        var colorSet = 'orange';
-        var colorRoot = '#ea9393';
-        var colorTable = '#cb93ea';
-        var colorRelNode = '#93ea94';
-        var colorRelNodeInfCost = '#aaaaaa';
-        var colorSubset = '#93d1ea';
-        var colorSubsetInfCost = '#aaaaaa';
+        if (!trace.trim()) {
+          alert('Please enter a Calcite trace or load a sample!');
+          return;
+        }  
 
-        var colorEdge = 'black';
-        var colorEdgeBest = 'red';
-        var colorEdgeSet = 'orange';
+        $('#wait').show();       
+        
+        localStorage.setItem(localStorageTraceKey, trace);
 
-        var lines = getTraceLines();
+        var lines = trace.split('\n');
 
         var nodes = [];      
         var edges = [];
@@ -347,26 +372,39 @@
         }
 
         var container = document.getElementById('net');
-        var data = {
-          nodes: new vis.DataSet(nodes),
-          edges: new vis.DataSet(edges)
-        };
-        var options = {
-          interaction:{
-            selectable: true, 
-            selectConnectedEdges:false
-          }
-        };
-        var network = new vis.Network(container, data, options);
 
-        network.once('stabilizationIterationsDone', function() {
-            $('#wait').hide();
-        });
+        if (!nodes.length) {
+          alert('The trace structure is not recognized. Please compare your input with the sample trace.');
+          $('#menu-body').show();
+          $('#wait').hide();
+          return;
+        }  
 
-        network.on("selectNode", function (params) {            
-            var relId = params.nodes[0];
-            $('#details').text(details[relId]);
-        });
+        try {
+          var data = {
+            nodes: new vis.DataSet(nodes),
+            edges: new vis.DataSet(edges)
+          };
+          var options = {
+            interaction:{
+              selectable: true, 
+              selectConnectedEdges:false
+            }
+          };
+          var network = new vis.Network(container, data, options);
+
+          network.once('stabilizationIterationsDone', function() {
+              $('#wait').hide();
+          });
+
+          network.on("selectNode", function (params) {            
+              var relId = params.nodes[0];
+              $('#details').text(details[relId]);
+          });
+        } catch (e) {
+          alert(e);
+          $('#wait').hide();
+        }
       }
 
       var resize = function () {
@@ -383,7 +421,26 @@
         $('#trace').val('')
       });
       $('#draw').click(draw);
+
+      var loadTrace = function(trace) {
+        $('#trace').val(trace);
+      }
+
+      var loadSampleTrace = function() {
+        loadTrace($('#sample').val());
+      }
+
+      $('#load-sample').click(loadSampleTrace);
+
       resize();
+
+      var localStorageTrace = localStorage.getItem(localStorageTraceKey);
+      if (localStorageTrace) {
+        loadTrace(localStorageTrace);
+      } else {
+        loadSampleTrace();
+      }
+
       draw();
     })
   </script>
@@ -416,16 +473,18 @@
     </label>
 
     <label>Skip conventions regexp
-      <input id='skip-conventions-regexp' type='text' required="required" value='AAA|BBB|CCC'>
+      <input id='skip-conventions-regexp' type='text' value='MyConventionAAA|MyConventionBBB'>
     </label>
 
     <label>
       Apache Calcite trace
       <span id='clear' class='btn'>Clear</span>
+      <span id='load-sample' class='btn'>Load sample</span>
     </label>
 
+    <textarea id='trace'></textarea>
 
-<textarea id='trace'>
+<textarea id='sample'>
 Sets:
 Set#0, type: RecordType(INTEGER EMPNO, VARCHAR NAME, INTEGER DEPTNO, VARCHAR GENDER, VARCHAR CITY, INTEGER EMPID, INTEGER AGE, BOOLEAN SLACKER, BOOLEAN MANAGER, DATE JOINEDAT)
 	rel#28:Subset#0.NONE.[], best=null, importance=0.531441
