@@ -15,6 +15,7 @@
      
     input, textarea, checkbox {
       background-color: #fff9ed;
+      border: 1px solid #eb742a;
     } 
 
     #net {
@@ -140,12 +141,13 @@
     var colorEdgeSet = 'orange';
 
     var localStorageTraceKey = 'trace';
+    var localStorageSkipConventionsRegexpKey = 'skipConventionsRegexp';
 
     $(document).ready(function () {
 
       var draw = function () {
         var trace = $('#trace').val();
-
+        $('#details').text("");
         if (!trace.trim()) {
           alert('Please enter a Calcite trace or load a sample!');
           return;
@@ -174,10 +176,14 @@
         if (skipConventionPattern) {
           try {
             skipConventions = new RegExp(skipConventionPattern);
+            localStorage.setItem(localStorageSkipConventionsRegexpKey, skipConventionPattern)
           } catch (e) {
             alert(e);
-            skipConventions = /$a/;
+            $('#wait').hide();  
+            return;
           }
+        } else {
+          localStorage.setItem(localStorageSkipConventionsRegexpKey, '');
         }
 
         var isSkipSubset = false;     
@@ -199,10 +205,10 @@
           }
         }
 
-        var drawSubset = function(setId, subsetRelId, subsetConvention) {
-          result = line.match(/best=rel#(\d+)/);
-          if (result) {
-            bestInSubset = parseInt(result[1]);
+        var drawSubset = function(setId, subsetRelId, subsetConvention, line) {
+          lineMatchResult = line.match(/best=rel#(\d+)/);
+          if (lineMatchResult) {
+            bestInSubset = parseInt(lineMatchResult[1]);
           } else {
             bestInSubset = -1;
           }
@@ -229,16 +235,16 @@
           }           
         }
 
-        var drawRelNode = function(setId, subsetRelId, relId, line, result) {
+        var drawRelNode = function(setId, subsetRelId, relId, line, lineMatchResult) {
           var isBest = (bestInSubset == relId);
           var tableMatch = line.match(/table=\[(.+)\]/);
           var isTable = !!tableMatch;
-          var relName = result[2];
+          var relName = lineMatchResult[2];
           var isInfCost = !!line.match(/cost={inf}/);
 
-          var isShowNodeAsEdged = !isTable && isShowRelsAsEdges;
+          var isShowNodeAsEdge = !isTable && isShowRelsAsEdges;
 
-          var inputsEdgeTo = isShowNodeAsEdged ? subsetRelId : relId;
+          var inputsEdgeTo = isShowNodeAsEdge ? subsetRelId : relId;
 
           var isAlreadyDisplayed = !!displayedRelNodes[relId];
 
@@ -248,9 +254,9 @@
              return; 
           }  
 
-          var label = (isTable ? tableMatch[1] : result[2]) + '#' + relId;
+          var label = (isTable ? tableMatch[1] : lineMatchResult[2]) + '#' + relId;
 
-          if (!isShowNodeAsEdged) {     
+          if (!isShowNodeAsEdge) {     
 
             if (!isAlreadyDisplayed) {
               nodes.push({
@@ -271,13 +277,17 @@
             });
           }          
 
-          var result = line.match(/left=rel#(\d+).+right=rel#(\d+)/);
-          if (result) {
+          if (isTable) {
+            return;
+          }
+
+          var lineMatchResult = line.match(/left=rel#(\d+).+right=rel#(\d+)/);
+          if (lineMatchResult) {
             var drawJoin = function(leftId, rightId) {
               edges.push({
                 from: leftId,
                 to: inputsEdgeTo,
-                label:  'left:' + (isShowNodeAsEdged ? label :''),
+                label:  'left' + (isShowNodeAsEdge ? (': ' + label) :''),
                 arrows: 'to',
                 color: {
                   color: currentColorEdge
@@ -286,102 +296,133 @@
               edges.push({
                 from: rightId,
                 to: inputsEdgeTo,
-                label: 'right:' + (isShowNodeAsEdged ? label :''),
+                label: 'right' + (isShowNodeAsEdge ? (': ' + label) :''),
                 arrows: 'to',
                 color: {
                   color: currentColorEdge
                 }
               });
             }
-            var leftId = parseInt(result[1]);
-            var rightId = parseInt(result[2]);
+            var leftId = parseInt(lineMatchResult[1]);
+            var rightId = parseInt(lineMatchResult[2]);
 
             referencedSubsetNodes[leftId] = true; 
             referencedSubsetNodes[rightId] = true; 
 
             drawJoin(leftId, rightId);
-          } else {
-            result = line.match(/input=rel#(\d+)/);
-            if (result) {
-              var drawInput = function(inputId) {
-                edges.push({
-                  from: inputId,
-                  to: inputsEdgeTo,
-                  label: isShowNodeAsEdged ? label : null,
-                  arrows: 'to',
-                  color: {
-                    color: currentColorEdge
-                  }
-                });
-              }
-              var inputId = parseInt(result[1]);
+            return;
+          }
+
+          lineMatchResult = line.match(/input=rel#(\d+)/);
+          if (lineMatchResult) {
+            var drawInput = function(inputId) {
+              edges.push({
+                from: inputId,
+                to: inputsEdgeTo,
+                label: isShowNodeAsEdge ? label : null,
+                arrows: 'to',
+                color: {
+                  color: currentColorEdge
+                }
+              });
+            }
+            var inputId = parseInt(lineMatchResult[1]);
+            referencedSubsetNodes[inputId] = true; 
+
+            drawInput(inputId);
+            return;
+          }
+
+          // union or other multi-input node
+          var inputsMatch = line.match(/input#(\d+)=rel#(\d+)/g);
+          if (inputsMatch) {
+            var drawMultiInput = function(inputIndex, inputId) {
+              edges.push({
+                from: inputId,
+                to: inputsEdgeTo,
+                label: 'i'+ inputIndex + (isShowNodeAsEdge ? (': ' + label) :''),
+                arrows: 'to',
+                color: {
+                  color: currentColorEdge
+                }
+              });
+            }
+            for (j=0; j<inputsMatch.length; j++) {
+              var input = inputsMatch[j];
+              var inputMatch = input.match(/input#(\d+)=rel#(\d+)/);
+              var inputIndex = inputMatch[1];
+              var inputId = inputMatch[2];
               referencedSubsetNodes[inputId] = true; 
-
-              drawInput(inputId);
-            } else if (!isTable) {
-                alert('Unexpected line:' + line);                
+              drawMultiInput(inputIndex, inputId);
             }
-          }  
-        }
+            return;
+          }            
 
-        for (var i = 0; i < lines.length; i++) {
-          var line = lines[i];
+          throw 'Unexpected line:' + line;         
+        }  
+        
+        var processLines = function() {
+          for (var i = 0; i < lines.length; i++) {
+            var line = lines[i];
 
-          var result;
+            var lineMatchResult;
 
-          result = line.match(/^Set#(\d+)/);
-          if (result) {
-            setId = setIdShift + parseInt(result[1]);
-            details[setId] = line;
-            drawSet(setId);
-            continue;
-          }
-
-          result = line.match(/^\trel#(\d+):Subset#(\d+)\.([^,]+)/);
-          if (result) {   
-            var subsetConvention = result[3];         
-            if (subsetConvention.match(skipConventions)) {
-              isSkipSubset = true;
-             continue;
-            } else {
-              isSkipSubset = false;
+            lineMatchResult = line.match(/^Set#(\d+)/);
+            if (lineMatchResult) {
+              setId = setIdShift + parseInt(lineMatchResult[1]);
+              details[setId] = line;
+              drawSet(setId);
+              continue;
             }
-            subsetRelId = parseInt(result[1]);    
-            details[subsetRelId] = line;        
-            drawSubset(setId, subsetRelId, subsetConvention);            
-            continue;
-          }
 
-          if (isSkipSubset) {
-            continue;
-          }
+            lineMatchResult = line.match(/^\trel#(\d+):Subset#(\d+)\.([^,]+)/);
+            if (lineMatchResult) {   
+              var subsetConvention = lineMatchResult[3];         
+              if (subsetConvention.match(skipConventions)) {
+                isSkipSubset = true;
+              continue;
+              } else {
+                isSkipSubset = false;
+              }
+              subsetRelId = parseInt(lineMatchResult[1]);    
+              details[subsetRelId] = line;        
+              drawSubset(setId, subsetRelId, subsetConvention, line);            
+              continue;
+            }
 
-          result = line.match(/^\t\trel#(\d+):([^\.]+)/);
-          if (result) {
-            var relId = parseInt(result[1]);
-            details[relId] = line;
-            drawRelNode(setId, subsetRelId, relId, line, result);
-            continue;
+            if (isSkipSubset) {
+              continue;
+            }
+
+            lineMatchResult = line.match(/^\t\trel#(\d+):([^\.]+)/);
+            if (lineMatchResult) {
+              var relId = parseInt(lineMatchResult[1]);
+              details[relId] = line;
+              drawRelNode(setId, subsetRelId, relId, line, lineMatchResult);
+              continue;
+            }
           }
         }
-
-        //trying to determine the root subset node
-        for (var subsetRelId in subsetNodes){          
-          if (!referencedSubsetNodes.hasOwnProperty(subsetRelId)) {
-            subsetNodes[subsetRelId].color = colorRoot;
+        
+        var identifyRoots = function() {
+          //trying to determine the root subset node
+          for (var subsetRelId in subsetNodes){          
+            if (!referencedSubsetNodes.hasOwnProperty(subsetRelId)) {
+              subsetNodes[subsetRelId].color = colorRoot;
+            }
           }
         }
 
         var container = document.getElementById('net');
 
-        if (!nodes.length) {
-          alert('The trace structure is not recognized. Please compare your input with the sample trace.');
-          $('#menu-body').show();
-          $('#wait').hide();
-          return;
-        }  
-
         try {
+          processLines();
+          identifyRoots();
+
+          if (!nodes.length) {
+            throw 'The trace structure is not recognized. Please compare your input to the sample trace.';
+          }  
+
           var data = {
             nodes: new vis.DataSet(nodes),
             edges: new vis.DataSet(edges)
@@ -404,8 +445,10 @@
               $('#details').text(details[relId]);
           });
         } catch (e) {
-          alert(e);
+          $('#menu-body').show();
           $('#wait').hide();
+          console.log(e);
+          alert(e); 
         }
       }
 
@@ -430,16 +473,27 @@
 
       var loadSampleTrace = function() {
         loadTrace($('#sample').val());
+        $('#skip-conventions-regexp').val('MyConventionAAA|MyConventionBBB');
       }
 
       $('#load-sample').click(loadSampleTrace);
 
       resize();
+      
+      var loadMemorizedSettings = function() {
+        var localStorageTrace = localStorage.getItem(localStorageTraceKey);
+        if (localStorageTrace) {
+          loadTrace(localStorageTrace);
+          $('#skip-conventions-regexp').val(localStorage.getItem(localStorageSkipConventionsRegexpKey));
+        } else {
+          loadSampleTrace();
+        }
+      }
 
-      var localStorageTrace = localStorage.getItem(localStorageTraceKey);
-      if (localStorageTrace) {
-        loadTrace(localStorageTrace);
-      } else {
+      try {
+        loadMemorizedSettings();
+      } catch(e) {
+        console.log(e);
         loadSampleTrace();
       }
 
