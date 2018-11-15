@@ -247,7 +247,7 @@
 
         var drawRelNode = function(setId, subsetRelId, relId, line, lineMatchResult) {
           var isBest = (bestInSubset == relId);
-          var tableMatch = line.match(/table=\[(.+)\]/);
+          var tableMatch = line.match(/table=\[([^\]]+)/);
           var isTable = !!tableMatch;
           var relName = lineMatchResult[2];
           var isInfCost = !!line.match(/cost={inf}/);
@@ -264,7 +264,7 @@
              return; 
           }  
 
-          var label = (isTable ? tableMatch[1] : lineMatchResult[2]) + '#' + relId;
+          var label = lineMatchResult[2] + '#' + relId + (isTable ? (': ' + tableMatch[1]) : '');
 
           if (!isShowNodeAsEdge) {     
 
@@ -291,6 +291,7 @@
             return;
           }
 
+          // join
           var lineMatchResult = line.match(/left=rel#(\d+).+right=rel#(\d+)/);
           if (lineMatchResult) {
             var drawJoin = function(leftId, rightId) {
@@ -323,6 +324,7 @@
             return;
           }
 
+          //single input rel
           lineMatchResult = line.match(/input=rel#(\d+)/);
           if (lineMatchResult) {
             var drawInput = function(inputId) {
@@ -368,7 +370,9 @@
             return;
           }            
 
-          throw 'Unexpected line:' + line;         
+          // can't detect node's inputs, but at least the node itself is displayed
+          // add one more inptus detection regexp if required
+          console.log("Can't detect inputs for: " + line);
         }  
         
         var processLines = function() {
