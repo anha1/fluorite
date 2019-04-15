@@ -292,7 +292,7 @@
           }
 
           // join
-          var lineMatchResult = line.match(/left=rel#(\d+).+right=rel#(\d+)/);
+          var lineMatchResult = line.match(/left=[^#]+#(\d+).+right=[^#]+#(\d+)/);
           if (lineMatchResult) {
             var drawJoin = function(leftId, rightId) {
               edges.push({
@@ -325,7 +325,7 @@
           }
 
           //single input rel
-          lineMatchResult = line.match(/input=rel#(\d+)/);
+          lineMatchResult = line.match(/input=[^#]+#(\d+)/);
           if (lineMatchResult) {
             var drawInput = function(inputId) {
               edges.push({
@@ -346,7 +346,7 @@
           }
 
           // union or other multi-input node
-          var inputsMatch = line.match(/input#(\d+)=rel#(\d+)/g);
+          var inputsMatch = line.match(/input#(\d+)=[^#]+#(\d+)/g);
           if (inputsMatch) {
             var drawMultiInput = function(inputIndex, inputId) {
               edges.push({
@@ -361,7 +361,7 @@
             }
             for (j=0; j<inputsMatch.length; j++) {
               var input = inputsMatch[j];
-              var inputMatch = input.match(/input#(\d+)=rel#(\d+)/);
+              var inputMatch = input.match(/input#(\d+)=[^#]+#(\d+)/);
               var inputIndex = inputMatch[1];
               var inputId = inputMatch[2];
               referencedSubsetNodes[inputId] = true; 
@@ -389,7 +389,7 @@
               continue;
             }
 
-            lineMatchResult = line.match(/^\trel#(\d+):Subset#(\d+)\.([^,]+)/);
+            lineMatchResult = line.match(/^\t[^#]+#(\d+):Subset#(\d+)\.([^,]+)/);
             if (lineMatchResult) {   
               var subsetConvention = lineMatchResult[3];         
               if (subsetConvention.match(skipConventions)) {
@@ -408,7 +408,7 @@
               continue;
             }
 
-            lineMatchResult = line.match(/^\t\trel#(\d+):([^\.]+)/);
+            lineMatchResult = line.match(/^\t\t[^#]+#(\d+):([^\.]+)/);
             if (lineMatchResult) {
               var relId = parseInt(lineMatchResult[1]);
               details[relId] = line;
@@ -516,7 +516,7 @@
   </script>
 </head>
 <body>
-  <a href="https://github.com/anha1/apache-calcite-trace-analyzer">
+  <a href="https://github.com/anha1/fluorite">
     <img id="forkme" src="https://s3.amazonaws.com/github/ribbons/forkme_right_orange_ff7600.png" alt="Fork me on GitHub">
   </a>
 
